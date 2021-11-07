@@ -1,0 +1,16 @@
+master:
+  max_pool_size: 8
+  max_exp_count: 50
+  lead_size: 100
+  pop_size: 1
+  overfitting:
+    threshold: 0.01 # if current*overfitting_threshold > next: overfitting is happening
+    min_grow: 20000 # check overfitting only if experiment count is more than this number
+    min_transfer: 1000 # finalize ga switch after this number of evaluations have been collected
+
+worker:
+  mrate: 0.2
+  samples: 100
+  tset_slice: 100
+  vset_slice: 2000
+  lead_size: 10

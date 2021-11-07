@@ -1,0 +1,2 @@
+confronto tra changing slice e random vset che arrivano a over 80%
+./plot.py res/{v352,v353}.csv

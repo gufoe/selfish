@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+  <meta charset="utf-8">
+  <title></title>
+  <script src="http://sigmajs.org/assets/js/sigma.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sigma.js/1.2.1/plugins/sigma.layout.forceAtlas2.min.js"></script>
+  <script src="p5.min.js" charset="utf-8"></script>
+  <style media="screen">
+    body {
+    font: 14px helvetica neue, helvetica, arial, sans-serif;
+    background: #101214;
+  }
+
+  canvas {
+    height: 100%;
+    width: 100%;
+    position: absolute;
+    left: 0;
+    top: 0;
+    /* background: #fff; */
+  }
+
+  #net {
+    opacity: 1
+  }
+  </style>
+</head>
+
+<body>
+<!-- <div id="cy"></div> -->
+
+<script type="text/javascript">
+fetch('./node_modules/mnist/src/digits/'+Math.floor(Math.random()*10)+'.json', {
+  cache: "reload"
+}).then(res => res.json()).then(input => {
+  fetch(location.hash.substr(1), {
+    cache: "reload"
+  }).then(res => res.json()).then(net => {
+    console.log(net)
+    prepare(net.A, input)
+  })
+})
+
+
+
+var random = function(min, max) {
+  this._seed || (this._seed = 1)
+  min = min || 0
+  max = max || .9999999999999999
+  var x = Math.sin(this._seed++) * 10000;
+  var y = x - Math.floor(x);
+  return min + y * (max - min)
+}
+
+function discharged(time, node) {
+  var discharge = node.discharge * (time - node.last_updated)
+  return Math.max(node.reset, node.value-discharge)
+}
+
+var col = (weight, opacity) => {
+  var v = weight
+  v = Math.min(1, Math.abs(v))
+  // if (weight < 0) v = 1-v
+  var c = [weight<0 ? v : 0, weight>0 ? v : 0, 0, 50]
+  c[0] *= 255
+  c[1] *= 255
+  c[2] *= 255
+  c[0] = Math.floor(c[0])
+  c[1] = Math.floor(c[1])
+  c[2] = Math.floor(c[2])
+  c[3] = Math.floor(c[3])
+  c[3] /= 100
+  if (opacity) c[3] = opacity
+  return 'rgba(' + c.join(',') + ')'
+}
+
+var _net, _input
+var _nodes, _all, _tick = false
+var _w = window.innerWidth
+var _h = window.innerHeight
+function prepare(net, input) {
+  _input = input
+  _net = net
+
+  _net.signal = function(t, name, value, source) {
+    if (!(t in this.actions)) this.actions[t] = []
+    this.actions[t].push({ value, name, source, target: this.nodes[name], started: this.time })
+  }
+
+  _net.reset = function() {
+    this.time = 0
+    this.actions = {}
+    Object.values(this.nodes).some(n => {
+      n.value = n.reset
+      n.last_activation = -1
+      n.last_updated = -1
+    })
+  }
+
+  _net.cycle = function(ticks, trigger) {
+    var act = {}
+    for (var i = 0; i < ticks; i++) {
+      act = this.tick()
+      if (trigger && Object.values(act).length) {
+        break
+      }
+    }
+    return act
+  }
+
+  _net.tick = function() {
+    var touched = {};
+    (this.actions[this.time] || []).some(act => {
+      var node = this.nodes[act.name]
+      if (node.last_updated != this.time) {
+        node.value = discharged(this.time, node)
+        node.last_updated = this.time
+      }
+      node.value+= act.value
+      touched[act.name] = [node.value, node.threshold]
+    })
+
+    var ret = {}
+    for (var name in touched) {
+      var touch = touched[name]
+      if (touch[0] <= touch[1]) continue
+      // console.log(touch[0], '>', touch[1])
+      let node = this.nodes[name]
+      // let val = Math.pow(node.value - node.threshold, 2)
+      // activation
+      // let val = node.value
+      let val = node.value - node.threshold
+
+      node.links.some(syn => {
+        let t = this.time + syn.delay
+        this.signal(t, syn.out, syn.weight*val, node)
+      })
+
+      if (node.is_output) {
+        ret[name] = Object.assign({}, node)
+      }
+
+      node.last_activation = this.time
+      node.value = node.reset
+    }
+
+    delete(net.actions[this.time])
+    this.time++
+    return ret
+  }
+
+
+  _nodes = {
+    input: {},
+    output: {},
+    hidden: {},
+  }
+
+  _all = Object.values(net.nodes)
+
+  for (var id in net.nodes) {
+    if (id.match(/^in-/)) {
+      net.nodes[id].is_input = true
+      _nodes.input[id] = net.nodes[id]
+    } else if (id.match(/^out-/)) {
+      net.nodes[id].is_output = true
+      _nodes.output[id] = net.nodes[id]
+    } else {
+      net.nodes[id].is_hidden = true
+      _nodes.hidden[id] = net.nodes[id]
+    }
+  }
+
+  // Position output
+  for (var i = 0; i < 10; i++) {
+    var x = ((i+1) / 11)/2
+    var y = 0.95
+    _nodes.output[`out-${i}`].pos = [x, y]
+    _nodes.output[`out-${i}`].size = 8
+  }
+
+  // Position input
+  for (var i = 0; i < 28*28; i++) {
+    var x = (i%28)/28
+    var y = Math.floor(i/28)/28
+    _nodes.input[`in-${i}`].pos = [0.01+x/5, 0.02+y/2]
+    _nodes.input[`in-${i}`].size = 7
+  }
+
+  // Position hidden
+  Object.values(_nodes.hidden).forEach(function(node, i, a) {
+    var x = 0.5+0.45*Math.cos(Math.PI * 2 * i / a.length);
+    var y = 0.4+0.35*Math.sin(Math.PI * 2 * i / a.length);
+    node.pos = [x/2+0.5, y]
+    node.size = 5
+  })
+
+  _all.some(n => {
+    n.pos[0]*= _w
+    n.pos[1]*= _h
+  })
+
+
+
+
+
+  _all.some(node => {
+    node.links.some(link => {
+      stroke(col(link.weight, .04))
+      var tp = _net.nodes[link.out].pos
+      line(node.pos[0], node.pos[1], tp[0], tp[1])
+    })
+    // return true
+  })
+
+  fill('rgba(0,255,0,0.1)')
+  stroke('rgba(0,255,0,.8)')
+  Object.values(_nodes.input).some(node => {
+    ellipse(node.pos[0], node.pos[1], node.size)
+  })
+  fill('rgba(0,255,255,0.1)')
+  stroke('rgba(0,255,255,.8)')
+  Object.values(_nodes.output).some(node => {
+    ellipse(node.pos[0], node.pos[1], node.size)
+  })
+  fill('rgba(0,150,250,0.1)')
+  stroke('rgba(0,150,250,.8)')
+  Object.values(_nodes.hidden).some(node => {
+    ellipse(node.pos[0], node.pos[1], node.size)
+  })
+
+  _net.reset()
+  for (var i = 0; i < 28*28; i++) {
+    _net.signal(0, `in-${i}`, _input.data[i])
+  }
+
+  var cvs = document.querySelector('#defaultCanvas0')
+  var c2 = cloneCanvas(cvs)
+  c2.id='net'
+  // document.body.insertBefore(c2, cvs)
+  document.body.appendChild(c2)
+
+
+
+  background(0)
+
+
+
+  _tick = 1
+}
+
+
+function setup() {
+  frameRate(60)
+  canvas = createCanvas(window.innerWidth, window.innerHeight)
+}
+
+var _pause = true
+var _autopause = true
+var _frames = 50
+function draw() {
+  if (!_tick || _pause) return
+  if (_autopause) _pause = true
+
+
+  if (_tick%_frames == 1) {
+    var act = _net.cycle(1)
+    if (Object.values(act).length) {
+      // _pause = true
+      // console.log(act)
+      // return
+    }
+  }
+  background('rgba(0,0,0,0.5)')
+
+  var time = (_tick-1)%_frames/_frames
+  var now = _net.time+time-1
+
+  // console.log(_tick, time)
+  for (var eta in _net.actions) {
+    _net.actions[eta].some(act => {
+      stroke(col(act.value, .4))
+      fill(col(act.value, Math.abs(act.value)+0.001))
+      var sp = act.source.pos
+      var tp = act.target.pos
+      line(sp[0], sp[1], tp[0], tp[1])
+      var start = act.started
+      var moment = (now-start)/(eta-start)
+      ellipse(lerp(sp[0], tp[0], moment), lerp(sp[1], tp[1], moment), 8)
+    })
+  }
+
+  _all.some(node => {
+    var d = discharged(now, node)
+    var op = Math.abs(d)+0.001
+    // console.log(op)
+    stroke(col(d, op))
+    if (node.last_activation == _net.time-1) {
+      fill('rgba(255,255,255,'+((1-time)/4).toFixed(2)+')')
+      ellipse(node.pos[0], node.pos[1], node.size*2)
+    }
+    fill(col(d, op))
+    ellipse(node.pos[0], node.pos[1], node.size)
+  })
+
+  // for (var i = -1.2; i < 1.2; i+= 0.1) {
+  //   fill(col(i, 1))
+  //   stroke(col(i, 1))
+  //   ellipse((i+2)/4*_w, 100, 40)
+  // }
+
+  _tick++
+}
+function keyTyped() {
+  if (key === 'p') {
+    _pause = !_pause
+  }
+  if (key === 'a') {
+    _autopause = !_autopause
+  }
+
+}
+function cloneCanvas(oldCanvas) {
+
+    //create a new canvas
+    var newCanvas = document.createElement('canvas');
+    var context = newCanvas.getContext('2d');
+
+    //set dimensions
+    newCanvas.width = oldCanvas.width;
+    newCanvas.height = oldCanvas.height;
+
+    //apply the old canvas to the new one
+    context.drawImage(oldCanvas, 0, 0);
+
+    //return the new canvas
+    return newCanvas;
+}
+
+</script>
+</body>
+
+</html>

@@ -1,0 +1,37 @@
+[package]
+name = "selfish2"
+version = "0.1.0"
+authors = ["Giacomo Rizzi <gufoes@gmail.com>"]
+
+[dependencies]
+rand = "0.6.5"
+serde = "*"
+serde_derive = "*"
+serde_json = "1.0"
+log = "*"
+mnist = "*"
+clap = "*"
+rulinalg = "*"
+getopts = "0.2"
+
+# tarpc = "0.15.0"
+# futures-preview = { version = "=0.3.0-alpha.14", default-features = false }
+
+# tarpc-bincode-transport={git = "https://github.com/google/tarpc.git"}
+#futures-preview={version = "0.3.0-alpha.12", features = ["compat", "tokio-compat"]}
+# tarpc="0.14.0"
+#tarpc = { git = "https://github.com/google/tarpc.git", features = ["serde1"] }
+# tarpc-plugins = { git = "https://github.com/google/tarpc", branch = "master" }
+#tokio-core="0.1"
+bincode="*"
+rustc-serialize = "0.3"
+
+time="*"
+#tokio="*"
+yaml-rust = "0.4"
+
+noise="*"
+rouille="*"
+# tarpc-bincode-transport="0.3"
+
+hashbrown = { version = "0.6", features = ["serde"] }

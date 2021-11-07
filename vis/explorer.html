@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+  <meta charset="utf-8">
+  <title></title>
+  <script src="http://sigmajs.org/assets/js/sigma.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sigma.js/1.2.1/plugins/sigma.layout.forceAtlas2.min.js"></script>
+  <style media="screen">
+    body {
+    font: 14px helvetica neue, helvetica, arial, sans-serif;
+  }
+
+  #cy {
+    height: 100%;
+    width: 100%;
+    position: absolute;
+    left: 0;
+    top: 0;
+    background: #101214;
+    /* background: #fff; */
+  }
+  </style>
+</head>
+
+<body>
+  <div id="cy"></div>
+
+  <script type="text/javascript">
+    fetch(location.hash.substr(1), {
+      cache: "reload"
+    }).then(res => res.json()).then(draw)
+
+
+    var random = function(min, max) {
+      this._seed || (this._seed = 1)
+      min = min || 0
+      max = max || .9999999999999999
+      var x = Math.sin(this._seed++) * 10000;
+      var y = x - Math.floor(x);
+      return min + y * (max - min)
+    }
+
+    var col = (weight) => {
+      var v = weight
+      v = Math.min(1, Math.max(v/2, - 1))
+      v01 = v / 2 + .5
+      var c = [1 - v01, v01, 1 - Math.min(1, Math.abs(v)), 50]
+      c[0] *= 255
+      c[1] *= 255
+      c[2] *= 255
+      c[0] = Math.floor(c[0])
+      c[1] = Math.floor(c[1])
+      c[2] = Math.floor(c[2])
+      c[3] = Math.floor(c[3])
+      c[3] /= 100
+      return 'rgba(' + c.join(',') + ')'
+    }
+
+    function draw(data) {
+      console.log(data)
+      window.net = data
+      var dna = data.dna
+      var opts = data.opts
+
+      // var cvs = document.querySelector('#net')
+      // var ctx = cvs.getContext('2d')
+
+      var nodes = []
+      var edges = []
+      var level = 0
+      // console.log(dna)
+      let hidden = []
+      for (var i in data.nodes) {
+        var g = data.nodes[i]
+        var m = i.match(/^(\w+)-(\d+)$/i)
+        let size = 0.3
+        let x = random()*3-1
+        let y = random()*3-1
+        let h = false
+        if (m && m[1] == 'in') {
+          let i = parseInt(m[2])
+          x = -3 + ((i%28)/28)*2
+          y = Math.floor(i/28)/28*2
+          // console.log('y', i)
+        } else if (m && m[1] == 'out') {
+          size = 1
+          x = 4
+          y = parseInt(m[2]) / 10
+          y*= 3
+          y-= 1
+        } else {
+          h = true
+        }
+        // break
+        // console.log(m)
+        let n = {
+          // data: {
+          id: i,
+          // label: i,
+          x,
+          y,
+          size,
+          color: col(g.threshold-g.reset),
+          // g
+          // }
+        }
+        if (h) hidden.push(n)
+        nodes.push(n)
+        g.links.forEach(l => {
+          // if (edges.length > 100) return
+
+          l.weight != 0 && edges.push({
+            id: edges.length,
+            // data: {
+            type: "arrow",
+            target: l.out,
+            source: i,
+            color: col(l.weight),
+            data: l,
+            // delay: l.delay.toFixed(2),
+            // weight: l.weight.toFixed(2),
+            // }
+          })
+        })
+      }
+
+      hidden.forEach(function(node, i, a) {
+        node.x = 2*Math.cos(Math.PI * 2 * i / a.length);
+        node.y = -3+2*Math.sin(Math.PI * 2 * i / a.length);
+        // node.size=.01;
+        // node.color='#f00';
+      })
+
+      console.log('starting cytoscape', nodes, edges)
+      // return
+      sigma.classes.graph.addMethod('neighbors', function(nodeId) {
+        var k,
+          neighbors = {},
+          index = this.allNeighborsIndex[nodeId] || {};
+
+        // for (k in index)
+        //   neighbors[k] = this.nodesIndex[k];
+        // console.log('asd1', index)
+        // console.log('asd2', neighbors)
+        return index;
+      });
+
+      s = new sigma({
+        renderers: [{
+          container: document.getElementById('cy'),
+          type: sigma.renderers.webgl,
+          type: sigma.renderers.svg,
+          type: sigma.renderers.canvas,
+        }],
+        settings: {
+          minNodeSize: 0.001,
+          minEdgeSize: 2.5,
+          maxEdgeSize: 2.5,
+          labelColor: '#00f',
+          font: 'monospace',
+        },
+        graph: {
+          nodes,
+          edges
+        },
+      })
+
+      // s.startForceAtlas2({worker: true, barnesHutOptimize: true, slowDown: 1, scalingRatio: 100000, adjustSizes: true});
+
+      s.graph.nodes().forEach(function(n) {
+        n.originalColor = n.color;
+      });
+      s.graph.edges().forEach(function(e) {
+        e.originalColor = e.color;
+      });
+
+      // When a node is clicked, we check for each node
+      // if it is a neighbor of the clicked one. If not,
+      // we set its color as grey, and else, it takes its
+      // original color.
+      // We do the same for the edges, and we only keep
+      // edges that have both extremities colored.
+      s.bind('clickNode', function(e) {
+        console.log('click')
+        var node = e.data.node
+
+        let todo = {}
+
+        s.graph.edges().forEach(function(e) {
+          if (node.id == e.source || node.id == e.target) {
+            console.log(e.data)
+            e.color = e.originalColor;
+            todo[e.source] = true
+            todo[e.target] = true
+          } else
+            e.color = 'rgba(200,200,200,.05)';
+        });
+
+        s.graph.nodes().forEach(function(n) {
+          if (todo[n.id])
+            n.color = n.originalColor;
+          else
+            n.color = 'rgba(200,200,200,.05)';
+        });
+
+        s.refresh();
+      });
+
+      s.bind('clickStage', function(e) {
+        s.graph.nodes().forEach(function(n) {
+          n.color = n.originalColor;
+        });
+
+        s.graph.edges().forEach(function(e) {
+          e.color = e.originalColor;
+        });
+
+        // Same as in the previous event:
+        s.refresh();
+      });
+    }
+  </script>
+</body>
+
+</html>

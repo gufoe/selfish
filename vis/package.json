@@ -1,0 +1,9 @@
+{
+  "name": "vis",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "mnist": "^1.1.0"
+  }
+}
